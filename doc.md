@@ -4,7 +4,7 @@
 
 * 理解前端与智能合约交互的基本架构（Provider / Signer / Contract / Events / Off-chain indexer）。
 * 用 `ethers.js` 在 React 中完成常见流程：Connect Wallet、Approve、Deposit、Borrow、Repay、提案/投票。
-* 用 Hooks 抽象常用逻辑（useProvider/useSigner/useContract/useAsyncTx），实现整洁可复用的 UI 接口。
+* 用 Hooks 抽象常用逻辑（useProvider/useWallet/useContract/useAsyncTx），实现整洁可复用的 UI 接口。
 * 处理生产级问题：gas 估算、链切换、交易失败回滚、乐观 UI、事件订阅。
 * 本地测试、集成、部署到 Vercel/Netlify 的要点。
 
@@ -14,21 +14,21 @@
 
 推荐架构（前端单页 / React）：
 
-* `Provider` 层（ethers Provider / Signer）
-
+* **Provider 层**（ethers Provider / Signer）
   * Read-only provider（RPC）用于链上数据读取
   * Signer provider（Metamask / WalletConnect）用于签名 tx
-* `Contracts` 层
 
+* **Contracts 层**
   * 抽象合同实例，按 network + address + ABI 组织
-* `State` 层（React Context / Zustand / Redux）
 
+* **State 层**（React Context / Zustand / Redux）
   * 存放 wallet、chain、常用合约实例、用户余额、交易队列
-* `UI` 层
 
+* **UI 层**
   * 小组件：ConnectButton、TokenInput、TxButton、Modal、Notifications
   * 页面：Pool、Borrow、Dashboard、Governance
-* 可选后端（indexer / subgraph / TheGraph / Moralis）用于复杂查询与历史数据（避免前端频繁做 RPC scans）
+
+* **可选后端**（indexer / subgraph / TheGraph / Moralis）用于复杂查询与历史数据（避免前端频繁做 RPC scans）
 
 设计要点（工程角度）：
 
@@ -68,50 +68,50 @@
 ### Error/ Revert 处理
 
 * Ethers 抛出的错误 message 常常包含 JSON RPC 数据，解析方式要 robust（有时 revert message 在 `error.error.message` 或 `error.data` 下）。
-* 把 revert 显示成可理解文本，如“存款失败：余额不足”或“许可不足，请先 Approve”。
+* 把 revert 显示成可理解文本，如"存款失败：余额不足"或"许可不足，请先 Approve"。
 
 ---
 
-## 四、实战：文件结构（推荐）
+## 四、实战：项目文件结构（实际实现）
+
+本项目基于 **React + Vite + Tailwind CSS + ethers.js v5** 构建：
 
 ```
-frontend/
-├─ package.json
-├─ src/
-│  ├─ App.jsx
-│  ├─ index.jsx
-│  ├─ hooks/
-│  │  ├─ useProvider.js
-│  │  ├─ useContract.js
-│  │  ├─ useWallet.js
-│  │  └─ useAsyncTx.js
-│  ├─ components/
-│  │  ├─ ConnectButton.jsx
-│  │  ├─ TokenInput.jsx
-│  │  ├─ TxButton.jsx
-│  │  ├─ PoolPanel.jsx
-│  │  └─ GovernancePanel.jsx
-│  ├─ utils/
-│  │  ├─ constants.js
-│  │  └─ format.js
-│  └─ abis/
-│     ├─ LendingPool.json
-│     └─ GovToken.json
-└─ tailwind.config.js
+defi-frontend/
+├── package.json
+├── vite.config.js
+├── tailwind.config.js
+├── src/
+│   ├── App.jsx                    # 主应用组件（标签页切换）
+│   ├── main.jsx                   # 入口文件
+│   ├── index.css                  # 全局样式
+│   ├── hooks/                     # React Hooks
+│   │   ├── useProvider.js         # Provider Hook（支持 window.ethereum 和 RPC）
+│   │   ├── useWallet.js           # 钱包连接 Hook（账户、链、连接/断开）
+│   │   ├── useContract.js         # 合约实例 Hook
+│   │   └── useAsyncTx.js          # 异步交易 Hook（统一交易处理）
+│   ├── components/                # React 组件
+│   │   ├── ConnectButton.jsx      # 连接钱包按钮
+│   │   ├── TokenInput.jsx         # 代币输入组件（带余额和最大按钮）
+│   │   ├── TxButton.jsx           # 交易按钮（pending 状态）
+│   │   ├── PoolPanel.jsx          # 借贷池面板（存款/借款/还款/提取）
+│   │   └── GovernancePanel.jsx   # 治理面板（提案/投票/执行）
+│   ├── utils/                     # 工具函数
+│   │   ├── constants.js           # 合约地址和 RPC 配置
+│   │   ├── format.js              # 格式化函数（代币、地址、错误）
+│   │   └── governance.js          # 治理工具（calldata 生成、状态映射）
+│   └── abis/                      # 合约 ABI
+│       ├── ERC20Token.json
+│       ├── LendingPool.json
+│       ├── GovToken.json
+│       ├── SimpleGovernor.json
+│       └── RewardDistributor.json
+└── contracts/                     # 智能合约源码（Solidity）
 ```
 
 ---
 
-## 五、关键代码（可直接复制运行）
-
-下面给出最关键的 Hook 和组件实现：`useProvider`、`useWallet`、`useContract`、`useAsyncTx`、以及一个 `PoolPanel`（deposit/borrow）组件。代码尽量短而完整，省去样式细节，但功能齐全。
-
-> 依赖：`ethers`、`react`。命令：
->
-> ```
-> npm init -y
-> npm install react react-dom ethers
-> ```
+## 五、关键代码实现（项目实际代码）
 
 ### 1) `src/hooks/useProvider.js`
 
@@ -119,6 +119,12 @@ frontend/
 import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 
+/**
+ * Provider Hook
+ * 用于获取以太坊 Provider
+ * @param {string} rpcUrl - RPC URL（可选，如果未提供则使用 window.ethereum）
+ * @returns {ethers.providers.Provider|null} Provider 实例
+ */
 export function useProvider(rpcUrl) {
   const [provider, setProvider] = useState(null);
 
@@ -137,45 +143,114 @@ export function useProvider(rpcUrl) {
 }
 ```
 
+**要点**：
+- 优先使用 `window.ethereum`（MetaMask 等钱包）
+- 如果没有钱包，回退到 RPC URL（只读模式）
+- 使用 `"any"` 网络模式以支持多链
+
 ### 2) `src/hooks/useWallet.js`
 
 ```javascript
 import { useState, useEffect, useCallback } from "react";
 
+/**
+ * Wallet Hook
+ * 用于管理钱包连接状态
+ * @param {ethers.providers.Provider} provider - Provider 实例
+ * @returns {Object} 钱包相关状态和方法
+ */
 export function useWallet(provider) {
   const [account, setAccount] = useState(null);
   const [signer, setSigner] = useState(null);
   const [chainId, setChainId] = useState(null);
 
   useEffect(() => {
-    if (!provider) { setAccount(null); setSigner(null); return; }
+    if (!provider) {
+      setAccount(null);
+      setSigner(null);
+      setChainId(null);
+      return;
+    }
+
     const init = async () => {
       try {
-        const _signer = provider.getSigner();
-        setSigner(_signer);
-        const addr = await _signer.getAddress().catch(()=>null);
-        setAccount(addr);
-        const net = await provider.getNetwork();
-        setChainId(net.chainId);
+        const accounts = await provider.listAccounts();
+        if (accounts.length > 0) {
+          const _signer = provider.getSigner();
+          setSigner(_signer);
+          const addr = await _signer.getAddress();
+          setAccount(addr);
+          const net = await provider.getNetwork();
+          setChainId(net.chainId);
+        } else {
+          setAccount(null);
+          setSigner(null);
+        }
       } catch (e) {
+        console.error("useWallet init error:", e);
         setAccount(null);
+        setSigner(null);
       }
     };
+
     init();
+
+    // 监听账户变化
+    if (window.ethereum) {
+      const handleAccountsChanged = (accounts) => {
+        if (accounts.length > 0) {
+          init();
+        } else {
+          setAccount(null);
+          setSigner(null);
+        }
+      };
+
+      const handleChainChanged = () => {
+        init();
+      };
+
+      window.ethereum.on("accountsChanged", handleAccountsChanged);
+      window.ethereum.on("chainChanged", handleChainChanged);
+
+      return () => {
+        window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
+        window.ethereum.removeListener("chainChanged", handleChainChanged);
+      };
+    }
   }, [provider]);
 
   const connect = useCallback(async () => {
     if (!provider) throw new Error("No provider");
-    await provider.send("eth_requestAccounts", []);
-    const _signer = provider.getSigner();
-    setSigner(_signer);
-    setAccount(await _signer.getAddress());
-    setChainId((await provider.getNetwork()).chainId);
+    try {
+      await provider.send("eth_requestAccounts", []);
+      const _signer = provider.getSigner();
+      setSigner(_signer);
+      const addr = await _signer.getAddress();
+      setAccount(addr);
+      const net = await provider.getNetwork();
+      setChainId(net.chainId);
+    } catch (e) {
+      console.error("Connect wallet error:", e);
+      throw e;
+    }
   }, [provider]);
 
-  return { account, signer, chainId, connect, setSigner };
+  const disconnect = useCallback(() => {
+    setAccount(null);
+    setSigner(null);
+    setChainId(null);
+  }, []);
+
+  return { account, signer, chainId, connect, disconnect };
 }
 ```
+
+**要点**：
+- 自动检测已连接的账户（`listAccounts()`）
+- 监听账户切换和链切换事件
+- 提供 `connect()` 和 `disconnect()` 方法
+- 自动更新 signer 和 chainId
 
 ### 3) `src/hooks/useContract.js`
 
@@ -183,6 +258,14 @@ export function useWallet(provider) {
 import { useMemo } from "react";
 import { ethers } from "ethers";
 
+/**
+ * Contract Hook
+ * 用于创建合约实例
+ * @param {string} address - 合约地址
+ * @param {Array} abi - 合约 ABI
+ * @param {ethers.providers.Provider|ethers.Signer} providerOrSigner - Provider 或 Signer
+ * @returns {ethers.Contract|null} 合约实例
+ */
 export function useContract(address, abi, providerOrSigner) {
   return useMemo(() => {
     if (!address || !abi || !providerOrSigner) return null;
@@ -196,6 +279,11 @@ export function useContract(address, abi, providerOrSigner) {
 }
 ```
 
+**要点**：
+- 使用 `useMemo` 避免重复创建合约实例
+- 支持 provider（只读）和 signer（可写）
+- 自动处理错误情况
+
 ### 4) `src/hooks/useAsyncTx.js`
 
 统一发送 tx 的 hook：估 gas、发送、等待、通知。
@@ -203,27 +291,34 @@ export function useContract(address, abi, providerOrSigner) {
 ```javascript
 import { useState } from "react";
 
+/**
+ * Async Transaction Hook
+ * 用于处理异步交易，包括 gas 估算、发送、等待、错误处理
+ * @returns {Object} 交易相关状态和方法
+ */
 export function useAsyncTx() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(null);
 
   const sendTx = async (txPromise, onReceipt) => {
-    setError(null); setPending(true);
+    setError(null);
+    setPending(true);
     try {
       const tx = await txPromise;
-      // if tx is a TransactionResponse
-      if (tx.wait) {
+      // 如果 tx 是 TransactionResponse
+      if (tx && tx.wait) {
         const receipt = await tx.wait();
         if (onReceipt) onReceipt(receipt);
         setPending(false);
         return receipt;
       } else {
-        // already receipt-like
+        // 已经是 receipt 或结果
         setPending(false);
+        if (onReceipt) onReceipt(tx);
         return tx;
       }
     } catch (e) {
-      // parse revert string
+      // 解析 revert 字符串
       let msg = e?.error?.message || e?.message || String(e);
       setError(msg);
       setPending(false);
@@ -231,186 +326,467 @@ export function useAsyncTx() {
     }
   };
 
-  return { sendTx, pending, error };
+  const clearError = () => {
+    setError(null);
+  };
+
+  return { sendTx, pending, error, clearError };
 }
 ```
 
-### 5) `src/components/PoolPanel.jsx`
+**要点**：
+- 统一处理交易状态（pending、error）
+- 自动等待交易确认（`tx.wait()`）
+- 支持回调函数（`onReceipt`）
+- 错误解析和状态管理
 
-示例：展示 pool stats 并提供 deposit/borrow/repay flow（ERC20）。
+### 5) `src/components/PoolPanel.jsx`（核心功能）
+
+借贷池面板：展示 pool stats 并提供 deposit/borrow/repay/withdraw flow。
+
+**关键实现**：
 
 ```javascript
-import React, { useEffect, useState } from "react";
-import { useAsyncTx } from "../hooks/useAsyncTx";
-import { useContract } from "../hooks/useContract";
+// 确保 allowance 足够
+const ensureAllowance = async (amount) => {
+  if (!token || !pool || !signer || !account) return;
+
+  const allowance = await token.allowance(account, CONTRACT_ADDRESSES.LendingPool);
+  if (allowance.lt(amount)) {
+    await sendTx(token.connect(signer).approve(CONTRACT_ADDRESSES.LendingPool, amount));
+  }
+};
+
+// 存款（自动处理 approve）
+const handleDeposit = async () => {
+  if (!token || !pool || !signer) {
+    alert("请先连接钱包");
+    return;
+  }
+
+  try {
+    clearError();
+    const amt = parseToken(depositVal);
+    if (amt.lte(0)) {
+      alert("请输入有效的金额");
+      return;
+    }
+
+    await ensureAllowance(amt);
+    await sendTx(pool.connect(signer).deposit(amt), () => {
+      setDepositVal("");
+      setTimeout(() => window.location.reload(), 2000);
+    });
+  } catch (e) {
+    console.error("Deposit error:", e);
+    alert(formatError(e));
+  }
+};
+```
+
+**要点**：
+- 自动检查并处理 `approve`（`ensureAllowance`）
+- 使用 `formatToken`/`parseToken` 处理代币数量
+- 交易成功后刷新数据
+- 友好的错误提示
+
+### 6) `src/components/GovernancePanel.jsx`（治理功能）
+
+治理面板：创建提案、投票、执行提案。
+
+**关键实现**：
+
+```javascript
+// 创建提案
+const handleCreateProposal = async () => {
+  if (!governor || !signer) {
+    alert("请先连接钱包");
+    return;
+  }
+
+  try {
+    clearError();
+
+    if (!proposalTarget || !proposalCalldata || !proposalDescription) {
+      alert("请填写完整的提案信息");
+      return;
+    }
+
+    const targets = [proposalTarget];
+    const values = [0];
+    const calldatas = [proposalCalldata];
+
+    await sendTx(
+      governor.connect(signer).propose(targets, values, calldatas, proposalDescription),
+      () => {
+        setProposalDescription("");
+        setProposalTarget("");
+        setProposalCalldata("");
+        alert("提案创建成功！");
+        loadProposals();
+      }
+    );
+  } catch (e) {
+    console.error("Create proposal error:", e);
+    alert(formatError(e));
+  }
+};
+
+// 投票
+const handleVote = async (proposalId, support) => {
+  if (!governor || !signer) {
+    alert("请先连接钱包");
+    return;
+  }
+
+  try {
+    clearError();
+    await sendTx(governor.connect(signer).castVote(proposalId, support), () => {
+      alert("投票成功！");
+      loadProposals();
+    });
+  } catch (e) {
+    console.error("Vote error:", e);
+    alert(formatError(e));
+  }
+};
+```
+
+**要点**：
+- 支持手动输入 calldata 或使用工具生成
+- 从事件加载提案列表（`getLogs`）
+- 过滤无效提案（Canceled、Expired、测试提案）
+- 显示提案状态和投票统计
+
+### 7) `src/utils/format.js`（格式化工具）
+
+```javascript
 import { formatUnits, parseUnits } from "ethers/lib/utils";
 
-export default function PoolPanel({ signer, provider, tokenAddress, tokenAbi, poolAddress, poolAbi }) {
-  const [balance, setBalance] = useState("0");
-  const [depositVal, setDepositVal] = useState("");
-  const [borrowVal, setBorrowVal] = useState("");
-  const { sendTx, pending, error } = useAsyncTx();
+/**
+ * 格式化代币数量（从 wei 转换为可读格式）
+ */
+export function formatToken(value, decimals = 18, precision = 4) {
+  if (!value || value.toString() === "0") return "0";
+  try {
+    const formatted = formatUnits(value, decimals);
+    const num = parseFloat(formatted);
+    if (num === 0) return "0";
+    return num.toFixed(precision).replace(/\.?0+$/, "");
+  } catch (e) {
+    return "0";
+  }
+}
 
-  const token = useContract(tokenAddress, tokenAbi, signer || provider);
-  const pool = useContract(poolAddress, poolAbi, signer);
+/**
+ * 解析代币数量（从可读格式转换为 wei）
+ */
+export function parseToken(value, decimals = 18) {
+  if (!value || value === "") return parseUnits("0", decimals);
+  try {
+    return parseUnits(value, decimals);
+  } catch (e) {
+    return parseUnits("0", decimals);
+  }
+}
 
-  useEffect(() => {
-    if (!token || !pool || !provider) return;
-    let mounted = true;
-    const load = async () => {
-      try {
-        const [b, td, tb] = await Promise.all([
-          token.balanceOf(await provider.getSigner().getAddress()).catch(()=>0),
-          pool.totalDeposits().catch(()=>0),
-          pool.totalBorrows().catch(()=>0)
-        ]);
-        if (!mounted) return;
-        setBalance(formatUnits(b, 18));
-        // you can set pool summary state here
-      } catch(e) { console.error(e) }
-    };
-    load();
-    return () => { mounted = false; };
-  }, [token, pool, provider]);
+/**
+ * 格式化地址（显示前6位和后4位）
+ */
+export function formatAddress(address) {
+  if (!address) return "";
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
 
-  // Approve-then-deposit flow
-  const handleDeposit = async () => {
-    if (!token || !pool) return alert("connect first");
-    const amt = parseUnits(String(depositVal || "0"), 18);
-    try {
-      // check allowance
-      const me = await provider.getSigner().getAddress();
-      const allowance = await token.allowance(me, poolAddress);
-      if (allowance.lt(amt)) {
-        // call approve
-        await sendTx(token.connect(signer).approve(poolAddress, amt), ()=>{});
-      }
-      // now call deposit
-      await sendTx(pool.deposit(amt), (r)=>{ console.log("deposit done", r); });
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleBorrow = async () => {
-    if (!pool) return;
-    const amt = parseUnits(String(borrowVal || "0"), 18);
-    await sendTx(pool.borrow(amt));
-  };
-
-  return (
-    <div className="p-4 border rounded">
-      <h3 className="font-bold">Pool</h3>
-      <div className="mt-2">Your token balance: {balance}</div>
-      <div className="mt-3">
-        <input value={depositVal} onChange={(e)=>setDepositVal(e.target.value)} placeholder="Deposit amount" />
-        <button disabled={pending} onClick={handleDeposit}>Deposit</button>
-      </div>
-      <div className="mt-3">
-        <input value={borrowVal} onChange={(e)=>setBorrowVal(e.target.value)} placeholder="Borrow amount" />
-        <button disabled={pending} onClick={handleBorrow}>Borrow</button>
-      </div>
-      {error && <div className="text-red-500 mt-2">Error: {error}</div>}
-    </div>
-  );
+/**
+ * 格式化错误消息（用户友好）
+ */
+export function formatError(error) {
+  if (!error) return "未知错误";
+  
+  const message = error.message || error.toString();
+  
+  // 常见错误消息映射
+  if (message.includes("user rejected")) {
+    return "用户拒绝了交易";
+  }
+  if (message.includes("insufficient funds")) {
+    return "余额不足";
+  }
+  if (message.includes("allowance")) {
+    return "许可不足，请先 Approve";
+  }
+  // ... 更多错误映射
+  
+  return message;
 }
 ```
 
-> 注：上述示例中 `tokenAbi`/`poolAbi`需按实际 ABI 填写。实际 production 建议把 `approve` 封装成独立的 `ensureAllowance(token,pool,amount)` 函数，做并发锁与重试。
+**要点**：
+- 统一的代币格式化（避免精度问题）
+- 用户友好的错误提示
+- 地址格式化（缩短显示）
+
+### 8) `src/utils/governance.js`（治理工具）
+
+```javascript
+import { ethers } from "ethers";
+
+/**
+ * 生成治理操作的 calldata
+ */
+export function generateCalldata(functionName, params, abi) {
+  try {
+    const iface = new ethers.utils.Interface(abi);
+    return iface.encodeFunctionData(functionName, params);
+  } catch (e) {
+    console.error("Generate calldata error:", e);
+    throw e;
+  }
+}
+
+/**
+ * 常用治理操作的 calldata 生成器
+ */
+export const GovernanceActions = {
+  setCollateralRatio: (ratio) => {
+    const abi = ["function setCollateralRatio(uint256 _ratio) external"];
+    return generateCalldata("setCollateralRatio", [ratio], abi);
+  },
+  
+  setMaxBorrowRatio: (ratio) => {
+    const abi = ["function setMaxBorrowRatio(uint256 _ratio) external"];
+    return generateCalldata("setMaxBorrowRatio", [ratio], abi);
+  },
+  
+  setGovernance: (newGovernance) => {
+    const abi = ["function setGovernance(address _governance) external"];
+    return generateCalldata("setGovernance", [newGovernance], abi);
+  },
+};
+
+/**
+ * 提案状态映射
+ */
+export const ProposalState = {
+  0: "Pending",
+  1: "Active",
+  2: "Canceled",
+  3: "Defeated",
+  4: "Succeeded",
+  5: "Queued",
+  6: "Expired",
+  7: "Executed",
+};
+
+/**
+ * 投票选项
+ */
+export const VoteOption = {
+  Against: 0,
+  For: 1,
+  Abstain: 2,
+};
+```
+
+**要点**：
+- 简化 calldata 生成（避免手动编码）
+- 预定义常用治理操作
+- 状态和选项映射
 
 ---
 
-## 六、治理页面（简化示例）
+## 六、项目启动与配置
 
-Governance 通常用 OpenZeppelin `Governor`，前端要支持列提案、创建提案、投票、查看状态。要点：
+### 1. 安装依赖
 
-* 提案的 calldata 要么在后端生成（更安全），要么前端提供 UI 表单并生成 ABI-encoded calldata（复杂）。
-* 投票时前端需检查用户的 `votingPower`（ERC20Votes 的 snapshot），并提示是否已委托（delegate）。
+```bash
+npm install
+```
 
-简化：用 `governor.propose([...])` + `governor.castVote(proposalId, support)` 即可。编码 calldata 的 helper：`new ethers.utils.Interface([abi]).encodeFunctionData("setReserveFactor", [2000])`。
+**主要依赖**：
+- `react` ^18.2.0
+- `react-dom` ^18.2.0
+- `ethers` ^5.7.2
+- `tailwindcss` ^3.4.0
+- `vite` ^5.0.8
+
+### 2. 配置合约地址
+
+在 `src/utils/constants.js` 中配置：
+
+```javascript
+export const CONTRACT_ADDRESSES = {
+  ERC20Token: "0x8c1094d088E2E2B62263326e2D88Ce512327CB3c",
+  LendingPool: "0x3CB5b6E26e0f37F2514D45641F15Bd6fEC2E0c4c",
+  GovToken: "0xBAdc777C579B497EdE07fa6FF93bdF4E31793F24",
+  SimpleGovernor: "0x90Ea96DBA5bbbb4D2F798C47FE23453054c0FAB4",
+  RewardDistributor: "0xF0b1b2A91AF3B0a0a5389eA80bFfDC42CF86B7e3",
+};
+
+// RPC URL
+export const RPC_URL = "http://localhost:8545"; // 本地开发
+// export const RPC_URL = "https://sepolia.infura.io/v3/YOUR_KEY"; // 测试网
+```
+
+### 3. 启动开发服务器
+
+```bash
+npm run dev
+```
+
+应用将在 `http://localhost:5173` 启动。
+
+### 4. 本地测试流程
+
+1. **启动本地节点**（Anvil / Hardhat）：
+   ```bash
+   # 使用 Anvil (Foundry)
+   anvil
+   
+   # 或使用 Hardhat
+   npx hardhat node
+   ```
+
+2. **部署合约**到本地节点
+
+3. **更新合约地址**（`src/utils/constants.js`）
+
+4. **配置 MetaMask**：
+   - 添加本地网络（http://localhost:8545）
+   - 导入测试账户私钥
+
+5. **连接钱包**并开始交互
 
 ---
 
-## 七、测试与本地开发
+## 七、核心功能说明
 
-本地开发建议流程：
+### 借贷池功能
 
-1. 使用 Foundry / Hardhat 部署合约到本地节点（Anvil / Hardhat node）。
-2. 启动前端指向本地 RPC（`http://localhost:8545`）。
-3. 用 `wallet`（metamask）添加本地网络并导入私钥（anvil 给的 dev keys）。
-4. 在前端用 `provider.send("eth_requestAccounts", [])` 连接钱包并开始交互。
+1. **存款（Deposit）**
+   - 自动检查并处理 `approve`
+   - 显示用户代币余额和存款余额
+   - 交易成功后自动刷新数据
 
-常见调试技巧：
+2. **借款（Borrow）**
+   - 检查可用借款额度
+   - 显示用户借款余额
+   - 实时更新池子流动性
 
-* 在前端打印 transaction receipt（`tx.hash`、`receipt.status`、`logs`）。
-* 对 revert：在本地先用 `contract.callStatic.function(...args)` 模拟执行以查看是否会 revert（callStatic 会返回错误 detail）。
-* 使用 `hardhat console` / `forge` 调用验证步骤。
+3. **还款（Repay）**
+   - 自动处理 `approve`
+   - 支持部分还款
+   - 更新借款余额
+
+4. **提取（Withdraw）**
+   - 检查抵押率要求
+   - 显示用户存款余额
+   - 更新池子统计
+
+### 治理功能
+
+1. **创建提案**
+   - 填写提案描述
+   - 输入目标合约地址
+   - 生成或手动输入 calldata
+   - 检查提案阈值
+
+2. **投票**
+   - 支持、反对、弃权三种选项
+   - 显示投票统计
+   - 检查投票权（需要先委托）
+
+3. **执行提案**
+   - 提案通过后可执行
+   - 显示提案状态
+
+4. **委托代币**
+   - ERC20Votes 代币需要先委托才能投票
+   - 支持委托给自己
 
 ---
 
-## 八、生产部署与运维要点
+## 八、测试与调试
 
-1. **RPC / Rate limits**：生产不要只依赖公共节点（Infura/Alchemy）。使用自建节点或多 provider fallback，并实现 rate limit/backoff。
-2. **Indexing**：事件历史与复杂查询依赖 TheGraph 或自建 indexer（避免前端做大量 `getLogs`）。
-3. **Relayers / Keepers**：设计 Keeper 激励（例如执行 `accrue`, `liquidate` 的交易奖励）。Keepers 可由后端触发，前端显示状态。
-4. **Monitoring**：交易失败率、gas spikes、bridge latency、oracle deltas 都需要监控并告警。
-5. **Feature flags / A/B**：通过后端/feature-flag 管理新功能 rollout，避免前端直接暴露危险操作。
-6. **Rate-limited actions**：对高频操作做 debounce/rate-limit 并提示用户（避免重复发 tx 导致 nonce 混乱）。
+### 常见调试技巧
+
+1. **打印交易 receipt**：
+   ```javascript
+   const receipt = await tx.wait();
+   console.log("Tx hash:", receipt.transactionHash);
+   console.log("Status:", receipt.status);
+   console.log("Logs:", receipt.logs);
+   ```
+
+2. **模拟执行**（检查是否会 revert）：
+   ```javascript
+   try {
+     await contract.callStatic.deposit(amount);
+     console.log("模拟成功，可以执行");
+   } catch (e) {
+     console.error("模拟失败:", e);
+   }
+   ```
+
+3. **检查 allowance**：
+   ```javascript
+   const allowance = await token.allowance(account, poolAddress);
+   console.log("Allowance:", formatToken(allowance));
+   ```
+
+### 常见问题
+
+1. **"用户拒绝了交易"**：用户在 MetaMask 中取消了交易
+2. **"余额不足"**：账户 ETH 余额不足以支付 gas
+3. **"许可不足"**：需要先调用 `approve`
+4. **"Nonce 错误"**：交易 nonce 冲突，刷新重试
 
 ---
 
-## 九、安全与 UX 最佳实践（实战建议）
+## 九、生产部署与运维要点
 
-* **钱包交互明确化**：在每次发送 tx 前弹出确认，显示 gas estimate、nonce、预期链上变化（余额、shares 等）。
-* **乐观 UI**：在 tx pending 时展示乐观变化（例如 “预计存款 +100”），但后台需在 tx confirmed 后矫正。
-* **失败回滚提示**：把 revert message 解析成用户友好文本并提供解决建议（“approve needed / insufficient allowance”）。
+1. **RPC / Rate limits**：
+   - 生产不要只依赖公共节点（Infura/Alchemy）
+   - 使用自建节点或多 provider fallback
+   - 实现 rate limit/backoff
+
+2. **Indexing**：
+   - 事件历史与复杂查询依赖 TheGraph 或自建 indexer
+   - 避免前端做大量 `getLogs`
+
+3. **Monitoring**：
+   - 交易失败率、gas spikes、bridge latency
+   - 需要监控并告警
+
+4. **Feature flags / A/B**：
+   - 通过后端/feature-flag 管理新功能 rollout
+   - 避免前端直接暴露危险操作
+
+5. **Rate-limited actions**：
+   - 对高频操作做 debounce/rate-limit
+   - 提示用户（避免重复发 tx 导致 nonce 混乱）
+
+---
+
+## 十、安全与 UX 最佳实践
+
+* **钱包交互明确化**：在每次发送 tx 前弹出确认，显示 gas estimate、nonce、预期链上变化。
+* **乐观 UI**：在 tx pending 时展示乐观变化（例如 "预计存款 +100"），但后台需在 tx confirmed 后矫正。
+* **失败回滚提示**：把 revert message 解析成用户友好文本并提供解决建议。
 * **避免隐式批准**：对 `approve` 做逐步确认（用户知道为什么需要 approve）。
-* **安全显示**：不要在前端保存私钥、不要把敏感 ABI/action 嵌入公共 CDN（易被篡改）。
-* **硬件钱包支持**：测试 Ledger / Trezor 的签名流程（一些硬件在多合约调用时拒签）。
+* **安全显示**：不要在前端保存私钥、不要把敏感 ABI/action 嵌入公共 CDN。
+* **硬件钱包支持**：测试 Ledger / Trezor 的签名流程。
 * **Accessibility**：按钮要大、颜色对比要足、键盘可访问。
 
 ---
 
-## 十、优化点（进阶）
+## 十一、优化点（进阶）
 
-* **Meta-transactions / Gasless UX**：通过 relayer/biconomy 支持 gasless tx，降低入门门槛。需要后端 relayer 签名与 gas 补偿逻辑。
+* **Meta-transactions / Gasless UX**：通过 relayer/biconomy 支持 gasless tx，降低入门门槛。
 * **Batching**：将 approve + action 合并成一个 meta-tx（后端或合约支持）减少钱包弹窗次数。
 * **Optimistic Updates + Queues**：为同一用户维护本地 pending tx 队列与 nonce 管理，避免并发冲突。
-* **Front-run / MEV防护**：对关键操作（提案、清算）考虑 private mempool 或执行延时来降低被抢跑风险。
-
----
-
-## 十一、完整项目启动（示例）
-
-1. 新建 React app（Vite）：
-
-```bash
-npm create vite@latest defi-frontend -- --template react
-cd defi-frontend
-npm install
-npm install ethers
-```
-
-2. 放入上面 hooks & components，填入合约地址与 ABI（`src/abis/*.json`）。
-
-3. 本地 RPC（Anvil / Hardhat）:
-
-```bash
-# anvil (foundry)
-anvil
-
-# or hardhat node
-npx hardhat node
-```
-
-4. 启动前端：
-
-```bash
-npm run dev
-# 打开 http://localhost:5173
-```
-
-5. 将钱包（Metamask）切换到本地节点并导入私钥（Anvil 提供的），然后 Connect Wallet。
+* **Front-run / MEV防护**：对关键操作（提案、清算）考虑 private mempool 或执行延时。
 
 ---
 
@@ -427,3 +803,14 @@ npm run dev
 ## 十三、结语
 
 第 12 课把链上合约与真实用户连接起来：**一个稳健的 DApp 不仅仅是漂亮 UI，而是正确的链交互、清晰的交易反馈、容错的错误处理和可扩展的后端支持**。上面的 Hooks、组件和工程流能快速支撑教学项目与原型开发；要做成生产级产品，还需要把 RPC 冗余、indexer、relayer、监控、合规与安全流程逐步补全。
+
+本项目提供了完整的实现示例，包括：
+- ✅ 完整的 Hooks 系统（useProvider、useWallet、useContract、useAsyncTx）
+- ✅ 完整的组件系统（ConnectButton、TokenInput、TxButton、PoolPanel、GovernancePanel）
+- ✅ 完整的工具函数（format、constants、governance）
+- ✅ 自动处理 approve 流程
+- ✅ 友好的错误提示
+- ✅ 实时数据更新
+- ✅ 完整的治理功能
+
+可以直接运行和扩展使用。
